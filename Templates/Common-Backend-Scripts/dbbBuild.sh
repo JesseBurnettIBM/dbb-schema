@@ -125,13 +125,13 @@ Help() {
 }
 
 #
-# Build Type Customization
 # Configuration file leveraged by the backend scripts
 # Either an absolute path or a relative path to the current working directory
 SCRIPT_HOME="`dirname "$0"`"
 pipelineConfiguration="${SCRIPT_HOME}/pipelineBackend.config"
+# Utility scripts
 buildUtilities="${SCRIPT_HOME}/utilities/dbbBuildUtils.sh"
-# Customization - End
+fetchBuildDependenciesUtilities="${SCRIPT_HOME}/utilities/fetchBuildDependenciesUtils.sh"
 
 #
 # Internal Variables
@@ -139,7 +139,7 @@ buildUtilities="${SCRIPT_HOME}/utilities/dbbBuildUtils.sh"
 #export BASH_XTRACEFD=1  # Write set -x trace to file descriptor
 
 PGM=$(basename "$0")
-PGMVERS="1.10"
+PGMVERS="1.20"
 USER=$USER
 SYS=$(uname -Ia)
 
@@ -154,19 +154,21 @@ PipelineType=""
 HELP=$1
 
 # Local Variables
-# TLD: Always a good idea to initialize any local varables
 AppDir=""        # Derived Application Directory
 HLQ=""           # Derived High Level Qualifier
 HLQPrefix=""     # Prefix of HLQ, either specified via the cli option -q or via configuration file
 Type=""          # Derived Build Type
+userDefinedBuildType="" #  Flag if the user has provided the Build Type as argument
 baselineRef=""   # baselineReference that is computed by utilities/dbbBuildUtils.sh
 propOverrides="" # Override of default build parameters for zAppBuild
 #  computed by utilities/dbbBuildUtils.sh
 outDir=""                  # Computed output directory to store build protocols
 nestedApplicationFolder="" # Flag to understand a nested repository
 
-LastBuildLog=""
-buildlistsize=0
+# Local variables for checking the contents of buildList and deletedFilesList
+totalLogListSize=0
+buildListFile=""
+deletedFilesListFile=""
 
 DBBLogger=""
 zAppBuildVerbose=""
@@ -208,6 +210,13 @@ if [ $rc -eq 0 ]; then
     echo $ERRMSG
   else
     source $buildUtilities
+  fi
+
+  # Read and import utilities
+  if [ ! -f "${fetchBuildDependenciesUtilities}" ]; then
+    rc=8
+    ERRMSG=$PGM": [ERROR] DBB-Build internal utilities (${fetchBuildDependenciesUtilities}) was not found. rc="$rc
+    echo $ERRMSG
   fi
 
   #
@@ -262,6 +271,7 @@ if [ $rc -eq 0 ]; then
           break
         fi
         Type="$argument"
+        userDefinedBuildType=1
         ;;
       p)
         argument="$OPTARG"
@@ -336,7 +346,7 @@ validateOptions() {
 
     # Check if application directory contains
     if [ -d "${AppDir}/${App}" ]; then
-      echo $PGM": [INFO] Detected the application respository (${App}) within the git repository layout structure."
+      echo $PGM": [INFO] Detected the application repository (${App}) within the git repository layout structure."
       echo $PGM": [INFO]  Assuming this as the new application location."
       AppDir="${AppDir}/${App}"
       nestedApplicationFolder="true"
@@ -428,7 +438,15 @@ if [ $rc -eq 0 ]; then
   fi
 fi
 
-# Ready to go  TLD: Suggest in the section to echo as much as possible
+
+# Setup build environment and pull external dependencies if an Application Descriptor is found
+if [ $rc -eq 0 ] && [ "$fetchBuildDependencies" == "true" ]; then
+    # call utilities script
+    . ${fetchBuildDependenciesUtilities}
+fi
+
+#
+# Echo build configuration
 if [ $rc -eq 0 ]; then
   echo $PGM": [INFO] **************************************************************"
   echo $PGM": [INFO] ** Started - DBB Build on HOST/USER: ${SYS}/${USER}"
@@ -493,7 +511,7 @@ if [ $rc -eq 0 ]; then
 
   CMD="${CMD} ${Type}" # Append zAppBuild Build Type
   echo $PGM": [INFO] ${CMD}"
-  ${CMD} #TLD: I commented this out for testing purposed
+  ${CMD}
   rc=$?
   #exit 0
 
@@ -501,26 +519,24 @@ if [ $rc -eq 0 ]; then
 
     ## Except for the reset mode, check for "nothing to build" condition and throw an error to stop pipeline
     if [ "$Type" != "--reset" ]; then
+      
+      # Locate buildList and deletedFilesList in Build Log Directory within outDir, and group them in logListArray
+      buildListFile="${outDir}/buildList.txt"
+      deletedFilesListFile="${outDir}/deletedFilesList.txt"
+      logListArray=(${buildListFile} ${deletedFilesListFile})
 
-      # Locate the most recent Build Log Directory within outDir. The Build Log Directories are Time Stamped.
-      # Therefore, the last directory entry will be the most recent Build Log. The directory will always be
-      # be created by DBB, but "buildList.txt" may not.  If not created, array will will be blank.
-      array=$(find ${outDir} -name "buildList.txt")
-      for log in ${array[@]}; do
-        LastBuildLog=${log}
-        echo $PGM": [INFO] LastBuildLog = ${LastBuildLog}"
+      # For each list in logListArray, if found in the last Build Log Directory, get its size (character count), then
+      # increase logListSize by that amount.
+      for list in ${logListArray[@]}; do
+        if [ -f ${list} ]; then
+          # wc -c will return the two values; Character Count and Log File Path.  Parse out the Character Count.
+          set $(wc -c <${list})
+          totalLogListSize=$((${totalLogListSize}+$1))
+        fi
       done
 
-      # If "buildList.txt" was found in the last Build Log Directory, determine the character count.
-      # wc -c will return the two values; Character Count and Log File Path.  Parse out the Character Count.
-      if [ -z ${LastBuildLog} ]; then
-        buildlistsize=0
-      else
-        set $(wc -c <${LastBuildLog})
-        buildlistsize=$1
-      fi
-
-      if [ $buildlistsize = 0 ]; then
+      # Error/warning if both build and file list have 0 character count (i.e. are empty)       
+      if [ ${totalLogListSize} = 0 ]; then
         rc=4
         ERRMSG=$PGM": [WARNING] DBB Build Error. No source changes detected. rc="$rc
         echo $ERRMSG
