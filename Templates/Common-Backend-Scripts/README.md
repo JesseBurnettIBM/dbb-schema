@@ -132,8 +132,9 @@ zowe zos-uss issue ssh "dbbBuild.sh -w MortApp/main/build-1 -a MortgageApplicati
 Artifact Name |  Description | Script details   
 ---------- | -----| -----------------------------------------------------
 [gitClone.sh](gitClone.sh) | Pipeline Shell Script to perform Git Clone to z/OS UNIX System Services | [script details](README.md#41---gitclonesh)
-[dbbBuild.sh](dbbBuild.sh) | Pipeline Shell Script to invoke the Dependency Based Build framework [zAppBuild](https://github.com/IBM/dbb-zappbuild) | [script details](#dbbbuildsh-for-zappbuild-frameworkh)
-[zBuilder.sh](zBuilder.sh) | Pipeline Shell script to invoke the zBuilder framework [zBuilder](https://www.ibm.com/docs/en/dbb/3.0?topic=building-zos-applications-zbuilder) | [script details](#zbuildersh-for-dbb-zbuilder)
+[dbbBuild.sh](dbbBuild.sh) | Pipeline Shell Script to invoke the Dependency Based Build framework [zAppBuild](https://github.com/IBM/dbb-zappbuild) | [script details](#dbbbuildsh-for-zappbuild-framework)
+[zBuilder.sh](zBuilder.sh) | Pipeline Shell Script to invoke the zBuilder framework [zBuilder](https://www.ibm.com/docs/en/dbb/3.0?topic=building-zos-applications-zbuilder) | [script details](#zbuildersh-for-dbb-zbuilder)
+[computeReleaseVersion.sh](computeReleaseVersion.sh) | Pipeline Shell Script to compute the next release version based on the baseline version information stored in the application's [baselineReference.config](samples/baselineReference.config) file. | [script details](#computeReleaseVersionsh)
 [packageBuildOutputs.sh](packageBuildOutputs.sh) | Pipeline Shell Script to create a Package using the [PackageBuildOutputs groovy script](https://github.com/IBM/dbb/tree/main/Pipeline/PackageBuildOutputs) | [script details](#packagebuildoutputssh)
 [ucdPackage.sh](ucdPackaging.sh) | Pipeline Shell Script to publish to UCD Code Station binary repository using the [CreateUCDComponentVersion groovy script](https://github.com/IBM/dbb/tree/main/Pipeline/CreateUCDComponentVersion) | [script details](#ucdpackagingsh)
 [wazideploy-generate.sh](wazideploy-generate.sh) | Pipeline Shell Script to generate a Deployment Plan to be used with Wazi Deploy | [script details](#wazideploy-generatesh)
@@ -492,6 +493,84 @@ The [dbbzBuilderUtils](utilities/dbbzBuilderUtils.sh) script is a core utility s
 
 Depending on the Deployment Manager tool you are using, you can choose from either creating a package with the [PackageBuildOutputs](#packagebuildoutputssh) script that can be used with IBM Wazi Deploy, or the [UCD packaging](#ucdpackagingsh) script that creates the UCD shiplist and UCD component version.
 
+### computeReleaseVersion.sh
+
+This script is to compute the version for the next release based on the information of baseline version stored in the [baseineReference.config](samples/baselineReference.config) file. The computation of the release version follows the versioning described in [IBM recommended Git branching model for mainframe developer](https://ibm.github.io/z-devops-acceleration-program/docs/branching/git-branching-model-for-mainframe-dev). It follows the Systematic Versioning as MAJOR.MINOR.PATCH number. The number of the coresponding part is increased based on the type of release.
+
+The computed release version is used as part of the archive name to be uploaded or downloaded from the artifact repository. The release version is an input for [packageBuildOutputs.sh](#packagebuildoutputssh) and [wazideploy-generate.sh](#wazideploy-generatesh).
+
+#### Invocation
+
+The `computeReleaseVersion.sh` script can be invoked as follows:
+
+```
+computeReleaseVersion.sh -w MortApp/main/build-1 -a MortgageApplication -b main -r minor
+```
+
+CLI parameter | Description
+---------- | ----------------------------------------------------------------------------------------
+-w `<workspace>` | **Workspace directory**, an absolute or relative path that represents unique directory for this pipeline definition, that needs to be consistent through multiple steps.
+-a `<application>` | **Application name** to be built.
+-b `<branch>` | **Git branch** that is built.
+-r `<major/minor/patch>` | **Release Type** to indicate the type of changes to be relased.
+
+#### Output
+
+The section below contains the output that is produced by the `computeReleaseVersion.sh` script.
+
+<details>
+  <summary>Script Output</summary>
+
+```
++ computeReleaseVersion.sh -w /var/jenkins/workspace/tgageApplication-Pipelines2_main -a MortgageApplication -b main -r major 
+[Pipeline] echo
+computeReleaseVersion.sh: [INFO] Release Version Wrapper. Version=1.10
+computeReleaseVersion.sh: [INFO] Reading pipeline configuration file: /var/jenkins/dbb/Templates/Common-Backend-Scripts/pipelineBackend.config
+computeReleaseVersion.sh: [INFO] Validating Options
+computeReleaseVersion.sh: [INFO] Application Directory: /var/jenkins/workspace/tgageApplication-Pipelines2_main/MortgageApplication
+computeReleaseVersion.sh: [INFO] Detected the application respository (MortgageApplication) within the git repository layout structure.
+computeReleaseVersion.sh: [INFO]  Assuming this as the new application location.
+computeReleaseVersion.sh: [INFO] **************************************************************
+computeReleaseVersion.sh: [INFO] ** Started Next Release Computation on HOST/USER: z/OS ZT01 05.00 02 8561/
+computeReleaseVersion.sh: [INFO] **                Workspace: /var/jenkins/workspace/tgageApplication-Pipelines2_main/MortgageApplication
+computeReleaseVersion.sh: [INFO] **              Application: MortgageApplication
+computeReleaseVersion.sh: [INFO] **                   Branch: main
+computeReleaseVersion.sh: [INFO] **             Release Type: major
+computeReleaseVersion.sh: [INFO] **   Baselinereference file: /var/jenkins/workspace/tgageApplication-Pipelines2_main/MortgageApplication/application-conf/baselineReference.config
+computeReleaseVersion.sh: [INFO] **************************************************************
+
+computeReleaseVersion.sh: [INFO] Baseline reference: refs/tags/rel-1.6.0
+computeReleaseVersion.sh: [INFO] Compute the next release version complete. The next release version: rel-2.0.0. rc=0
+
+```
+
+</details>
+
+#### Extract the next release version
+
+To obtain the release version from the `computeReleaseVersion.sh` script's output log, utilize string manipulation commands within your pipeline orchestrator to search for the pattern `version: .*rc=0` pattern and extract the version number form the search result.
+
+<details>
+  <summary>Example snippet to extract the version number</summary>
+
+```
+regexPattern = "version: .*rc=0"
+pattern = java.util.regex.Pattern.compile(regexPattern)
+//logContent is the output from invoking the computeReleaseVersion.sh script
+def pMatcher = pattern.matcher(logContent)
+if (pMatcher.find()) {
+	def version = "${pMatcher.group()}"
+  if (version){
+    releaseVersion = version.substring(9,version.length()-6)
+  }
+} else {
+	println("[INFO]: Failed to search for ${regexPattern}")
+}
+
+```
+
+</details>
+
 ### packageBuildOutputs.sh
 
 This script is to execute the `PackageBuildOutputs.groovy` that packages up the build outputs and optionally uploads it to an artifact repository to publish the artifacts created by a DBB build in the pipeline.
@@ -512,7 +591,8 @@ For release builds (that use the `pipelineType=release`), the archive is uploade
 `release/<reference>/<application>-<buildIdentifier>`:
 
 * **release** is defined for release builds. 
-* **reference** is the release name: for instance, `rel-1.2.3` (provided through the mandatory `-r` argument).
+* **reference** is the release name: for instance, `rel-1.2.3` (provided through the mandatory `-r` argument). The release name can be automatically computed using the [computeReleaseVersion.sh](#computereleaseversionsh) script.
+
 The archive's file name is computed using the application's name, the release name (`-r` argument) and a unique build identifier (`-i` argument). This parameter is typically the pipeline build number that is passed by the pipeline orchestrator. If a build identifier is not provided, the current timestamp is used.
 
 
@@ -629,8 +709,6 @@ rc=0
 
 </details>
 
-
-
 ### ucdPackaging.sh
 
 This script is to execute the `dbb-ucd-packaging.groovy` that invokes the Urban Code Deploy (UCD) buztool utility, to publish the artifacts created by the DBB Build from a pipeline.
@@ -695,7 +773,7 @@ Depending on the selected Deployment tool, select either from the scripts for IB
 
 This script invokes the Wazi Deploy Generate command to generate a Deployment Plan based on the content of a package. The package should be created with the `PackageBuildOutputs.groovy` script or through the `packageBuildOutputs.sh` script.
 
-This script assesses the configuration option `publish` from the `pipelineBackend.config` file. In case the configuration has enabled the upload to the Artifact repository, the script computes the URL where the package is expected to be found, and passes the URL into the wazideploy-generate command. This means that wazideloy-generate will download the package from the Artifact repository and allows to restore the package on a different system. It requires to pass in the additional arguments `-P`, `-R`, `-B`
+This script assesses the configuration option `publish` from the `pipelineBackend.config` file. In case the configuration has enabled the upload to the Artifact repository, the script computes the URL where the package is expected to be found, and passes the URL into the wazideploy-generate command. This means that wazideploy-generate will download the package from the Artifact repository and allows to restore the package on a different system. It requires to pass in the additional arguments `-P`, `-R`, `-B`
 
 #### Invocation
 
@@ -722,12 +800,11 @@ CLI parameter | Description
 -p `<deploymentPlan>` | (Optional) Absolute or relative path to the **Deployment Plan** file, generated based on the content of the input package. If providing a relative path, the file path is prefixed with Wazi Deploy Packaging directory `<wdDeployPackageDir>` configured in `pipelineBackend.config`.  If not specified, the deployment plan location is obtained from the `pipelineBackend.config`.
 -r `<deploymentPlanReport>` | (Optional) Absolute or relative path to the **Deployment Plan Report**. If providing a relative path, the file path is prefixed with Wazi Deploy Packaging directory `<wdDeployPackageDir>` configured in `pipelineBackend.config`. If not specified, the deployment plan report location is obtained from the `pipelineBackend.config`.
 -o `<packageOutputFile>` | (Optional) Absolute or relative path to the **Package Output File** that specifies the location where to store the downloaded tar file. If providing a relative path, the file path is prefixed with Wazi Deploy Packaging directory `<wdDeployPackageDir>` configured in `pipelineBackend.config`. Only required when wazideploy-generate is used to download the package. This is indicated when a URL is specified for the **Package Input File**.
-
 -d | (Optional) Debug tracing flag. Used to produce additional tracing with Wazi Deploy.
 -- | - when retrieving the tar file from Artifact repo the below options are mandatory -
 -b `<branch>`| Name of the **git branch** turning into a segment of the directory path for the location within the artifact repository.
 -p `<build/release>` | **Pipeline Type** to indicate a `build` pipeline (build only with test/debug options) or a `release` pipeline (build for optimized load modules for release candidates).
--R `<releaseIdentifier>` | **Release identifier** to indicate the next planned release name. This is a computed value based on the pipeline templates.
+-R `<releaseIdentifier>` | **Release identifier** to indicate the next planned release name. This is a computed value based on the pipeline templates. It can be automatically computed using the [computeReleaseVersion.sh](#computereleaseversionsh) script.
 -I `<buildIdentifier>` | **Build identifier** a unique value to identify the tar file. This is a computed value provided by the pipeline templates. Typically the build number of the pipeline run.
 -c `<configurationFile>` | Absolute path to the Wazi Deploy **Configuration File** that contains information to connect to the artifact repository. See [IBM Wazi Deploy documentation](https://www.ibm.com/docs/en/developer-for-zos/17.0?topic=files-configuration-file)
 
@@ -737,15 +814,15 @@ The section below contains the output that is produced by the `wazideploy-genera
 
 <details>
   <summary>Script Output</summary>
-wazideploy-generate.sh -m /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/deployment-method/deployment-method.yml -p /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml -r /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlanReport.html -i /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar
+wazideploy-generate.sh -m /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/deployment-method/deployment-method.yml -p /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml -r /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlanReport.html -i /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar
 wazideploy-generate.sh: [INFO] Generate Wazi Deploy Deployment Plan. Version=1.00
 
 wazideploy-generate.sh: [INFO] **************************************************************
 wazideploy-generate.sh: [INFO] ** Start Wazi Deploy Generation on HOST/USER: z/OS ZT01 04.00 02 8561/***
 wazideploy-generate.sh: [INFO] **               Deployment Method: /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/deployment-method/deployment-method.yml
-wazideploy-generate.sh: [INFO] **       Generated Deployment Plan: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml
-wazideploy-generate.sh: [INFO] **          Deployment Plan Report: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlanReport.html
-wazideploy-generate.sh: [INFO] **              Package Input File: /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar
+wazideploy-generate.sh: [INFO] **       Generated Deployment Plan: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml
+wazideploy-generate.sh: [INFO] **          Deployment Plan Report: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlanReport.html
+wazideploy-generate.sh: [INFO] **              Package Input File: /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar
 wazideploy-generate.sh: [INFO] **        Debug output is disabled.
 wazideploy-generate.sh: [INFO] **************************************************************
 
@@ -772,8 +849,8 @@ wazideploy-generate.sh: [INFO] *************************************************
 *** No item found
 ** Collecting items for DELETE_MODULES/DELETE/MEMBER_DELETE
 *** No item found
-* Save the deployment plan to: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml
-* Save the deployment plan report to: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlanReport.html
+* Save the deployment plan to: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml
+* Save the deployment plan report to: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlanReport.html
 
 </details>
 
@@ -781,22 +858,37 @@ wazideploy-generate.sh: [INFO] *************************************************
 
 This script invokes the Wazi Deploy Deploy (with the Python Translator) command to deploy the content of a provided package with a Deployment Plan.
 
+If the `publish` parameter defined in the pipelineBackend.config file is set to true, the script checks for the package input file that was automatically retrieved from wazideploy-generate.sh.
+
 #### Invocation
 
 The `wazideploy-deploy.sh` script can be invoked as follows:
 
 Only mandatory parameters, and using relative paths:
 ```
-wazideploy-deploy.sh -w  MorgageApplication/main/build-1 -e IntegrationTest.yaml -i MortgageApplication.tar
+wazideploy-deploy.sh -w  MorgageApplication/main/build-1 -e IntegrationTest.yaml -a MortgageApplication
 ```
 or qualified paths
 ```
 wazideploy-deploy.sh -w /u/ado/workspace/MorgageApplication/main/build-1 -p /u/ado/workspace/MortApp/main/build-1/deploymentPlan.yaml -e /u/ado/deployment/environment-configs/IntegrationTest.yaml -i /u/ado/builds/MortApp/main/build-1/logs/MortgageApplication.tar -l /u/ado/builds/MortApp/main/build-1/logs/evidences.yaml
 ```
 
+Use the `-x` CLI parameter to specify for any [extraVars](https://www.ibm.com/docs/en/developer-for-zos/17.0.x?topic=translators-python-deployment-command) options. 
+The `-o` CLI parameter can be used to specify any additional Wazi Deploy CLI argument, for instance to specify plan tags.
+The below sample shows a way to override the HLQ via an extraVar, and showcases the use of the `--planTags` CLI option.
+```
+# Deploy + Process DBRMs first
+wazideploy-deploy.sh -w $application/$branchName/build_$timestamp -a MorgageApplication -x 'hlq=WDEPLOY.MORTGAGE' -o '--planTags db2' -e EOLEB7-Integration.yml
+# Deploy all except DBRMs
+wazideploy-deploy.sh -w $application/$branchName/build_$timestamp -a MorgageApplication -x 'hlq=WDEPLOY.MORTGAGE' -o '--planSkipTags db2' -e EOLEB7-Integration.yml
+```
+
 CLI parameter | Description
 ---------- | ----------------------------------------------------------------------------------------
 -w `<workspace>` | **Workspace directory**, an absolute or relative path that represents unique directory for this pipeline definition, that needs to be consistent through multiple steps. Optional, if `deploymentPlan`, `environmentFile`, `packageInputFile` and `evidenceFile` are fully referenced. 
+-a `<application>` | **Application name** passed as an extraVars argument.
+-x `<user-extraVars>` | **User-provided extraVars** passed to the Wazi Deploy deploy command as extraVars arguments. Multiple extraVars options can be passed using a blank as separator.
+-o `<user-cli-options>` | **User-provided CLI arguments** passed to the Wazi Deploy deploy command, such as --planTags or --planSkipTags.
 -p `<deploymentPlan>` | (Optional) Absolute or relative path to the **Deployment Plan** file, generated based on the content of the input package. If not specified, the location of the deployment plan is obtained from the `pipelineBackend.config`.
 -e `<environmentFile>` | (Optional) Absolute or relative path to **Environment File**, that describes the target z/OS environment. If a relative path is provided, the environment file is located based on the setting `wdEnvironmentConfigurations` in `pipelineBackend.config`.
 -i `<packageInputFile>` | **Package Input File** package that is to be deployed. If a relative file path is provided, the file is assumed to be located in the `<workspace directory>/<logsDir>`.
@@ -809,60 +901,49 @@ The section below contains the output that is produced by the `wazideploy-deploy
 
 <details>
   <summary>Script Output</summary>
-wazideploy-deploy.sh -w /u/ado/workspace/MortgageApplication/main/build-20231019.13 -p /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml -e /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml -i /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar -l /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/evidence.yaml
+wazideploy-deploy.sh -w /u/ado/workspace/MortgageApplication/main/build-20259611.13 -p /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml -e /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml -i /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar -l /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/evidence.yaml
 wazideploy-deploy.sh: [INFO] Deploy Package with Wazi Deploy. Version=1.00
 
 wazideploy-deploy.sh: [INFO] **************************************************************
 wazideploy-deploy.sh: [INFO] ** Start Wazi Deploy Deployment on HOST/USER: z/OS ZT01 04.00 02 8561/***
-wazideploy-deploy.sh: [INFO] **               Working Directory: /u/ado/workspace/MortgageApplication/main/build-20231019.13
-wazideploy-deploy.sh: [INFO] **                 Deployment Plan: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml
+wazideploy-deploy.sh: [INFO] **               Working Directory: /u/ado/workspace/MortgageApplication/main/build-20259611.13
+wazideploy-deploy.sh: [INFO] **                 Deployment Plan: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml
 wazideploy-deploy.sh: [INFO] **                Environment File: /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml
-wazideploy-deploy.sh: [INFO] **              Package Input File: /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar
-wazideploy-deploy.sh: [INFO] **                   Evidence File: /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/evidence.yaml
+wazideploy-deploy.sh: [INFO] **              Package Input File: /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar
+wazideploy-deploy.sh: [INFO] **         User-provided extraVars: hlq=WDEPLOY.MORTGAGE
+wazideploy-deploy.sh: [INFO] **       User-provided cli options: --planSkipTags db2
+wazideploy-deploy.sh: [INFO] **                   Evidence File: /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/evidence.yaml
 wazideploy-deploy.sh: [INFO] **        Debug output is disabled.
 wazideploy-deploy.sh: [INFO] **************************************************************
-wazideploy-deploy -wf /u/ado/workspace/MortgageApplication/main/build-20231019.13 -dp /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml -ef /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml -pif /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar -efn /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/evidence.yaml
+wazideploy-deploy -wf /u/ado/workspace/MortgageApplication/main/build-20259611.13 --deploymentPlan /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml --envFile /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml -e hlq=DBEHM.BASETEST --planSkipTags db2 --packageInputFile /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar --evidencesFileName /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/evidence.yaml
 
-** Reading the deployment file from: /u/ado/workspace/MortgageApplication/main/build-20231019.13/deploymentPlan.yaml
+** Reading the deployment file from: /u/ado/workspace/MortgageApplication/main/build-20259611.13/deploymentPlan.yaml
 ** Reading the target environment file from: /var/WaziDeploy/wazi-deploy-samples-0.10.0/wazi-deploy-sample/plum-samples/external-repos/environment-conf/python/EOLEB7-MortgageApplication-Integration.yaml
 *** Validate Deployment Plan before processing it
 *** End of Deployment Plan validation
-*** Validate /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar fingerprint
-*** Checksum is valid for /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar
+*** Validate /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar fingerprint
+*** Checksum is valid for /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar
 ** Registering SMF Record
-*! WARNING: The registration of SMF record failed. See full log in evidence file /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/evidence.yaml
+*! WARNING: The registration of SMF record failed. See full log in evidence file /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/evidence.yaml
 ** Processing PACKAGE(s)
 ** Processing PACKAGE/PACKAGE(s)
 ** Processing PACKAGE/PACKAGE/PACKAGE(s) with package
-*** Processing package /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar
-*** Expand the package /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/MortgageApplication.tar to /u/ado/workspace/MortgageApplication/main/build-20231019.13 on system os OS/390
+*** Processing package /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar
+*** Expand the package /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/MortgageApplication.tar to /u/ado/workspace/MortgageApplication/main/build-20259611.13 on system os OS/390
 ** Processing DEPLOY_MODULES(s)
 ** Processing DEPLOY_MODULES/ADD(s)
 ** Processing DEPLOY_MODULES/ADD/MEMBER_COPY(s) with member_copy
-*** Copy /u/ado/workspace/MortgageApplication/main/build-20231019.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSCMORT.CICSLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSCMORT)'
-*** Copy /u/ado/workspace/MortgageApplication/main/build-20231019.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSMORT.MAPLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSMORT)'
-*** Copy /u/ado/workspace/MortgageApplication/main/build-20231019.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSMLIS.MAPLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSMLIS)'
-*** Copy /u/ado/workspace/MortgageApplication/main/build-20231019.13/***.MORTGAGE.MAIN.BLD.DBRM/EPSCMORT.DBRM to 'WDEPLOY.MORTGAGE.INT.DBRM(EPSCMORT)'
-** Processing DB2(s)
-** Processing DB2/UPDATE(s)
-** Processing DB2/UPDATE/DB2_BIND_PACKAGE(s) with db2_bind_package
-*** Perform BIND PACKAGE on subsys 'DBC1' for package 'MORTGAGE' and qualifier 'MORTGAGE' with template 'db2_bind_package.j2'
-**** Perform BIND PACKAGE on 'EPSCMORT.DBRM'
-*** Submit jcl /u/ado/workspace/MortgageApplication/main/build-20231019.13/bind_package_1.jcl
-** Job JOB03104 submitted with ZOAU Python API.
-**** Job JOB03104 finished CC=0000
-** Processing DB2/UPDATE/DB2_BIND_PLAN(s) with db2_bind_plan
-*** Perform BIND PLAN on subsys 'DBC1' for pklist '*.MORTGAGE.*' and qualifier 'MORTGAGE' with template 'db2_bind_plan.j2'
-*** Submit jcl /u/ado/workspace/MortgageApplication/main/build-20231019.13/bind_plan_1.jcl
-** Job JOB03105 submitted with ZOAU Python API.
-**** Job JOB03105 finished CC=0000
+*** Copy /u/ado/workspace/MortgageApplication/main/build-20259611.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSCMORT.CICSLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSCMORT)'
+*** Copy /u/ado/workspace/MortgageApplication/main/build-20259611.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSMORT.MAPLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSMORT)'
+*** Copy /u/ado/workspace/MortgageApplication/main/build-20259611.13/***.MORTGAGE.MAIN.BLD.LOAD/EPSMLIS.MAPLOAD to 'WDEPLOY.MORTGAGE.INT.LOAD(EPSMLIS)'
+*** Copy /u/ado/workspace/MortgageApplication/main/build-20259611.13/***.MORTGAGE.MAIN.BLD.DBRM/EPSCMORT.DBRM to 'WDEPLOY.MORTGAGE.INT.DBRM(EPSCMORT)'
 ** Processing CICS(s)
 ** Processing CICS/UPDATE(s)
 ** Processing CICS/UPDATE/PROG_UPDATE(s) with cics_cmci_prog_update
 *** Perform CICS NEWCOPY on WDEPLOY.MORTGAGE.INT.LOAD(EPSCMORT) on sysplex 'CICS01'
 *** Perform CICS NEWCOPY on WDEPLOY.MORTGAGE.INT.LOAD(EPSMORT) on sysplex 'CICS01'
 *** Perform CICS NEWCOPY on WDEPLOY.MORTGAGE.INT.LOAD(EPSMLIS) on sysplex 'CICS01'
-** Evidences saved in /u/ado/workspace/MortgageApplication/main/build-20231019.13/logs/evidence.yaml
+** Evidences saved in /u/ado/workspace/MortgageApplication/main/build-20259611.13/logs/evidence.yaml
 
 </details>
 
@@ -1080,7 +1161,7 @@ It _greps_ the information and invokes a download action.
 
 ### deleteWorkspace.sh
 
-Script delete the workspace and all empty directories in the working tree. 
+Script to delete the workspace.
 
 #### Invocation
 
@@ -1094,9 +1175,6 @@ CLI parameter | Description
 ---------- | ----------------------------------------------------------------------------------------
 -w `<workspace>` | **Workspace directory**, an absolute or relative path that represents unique directory for this pipeline definition, that needs to be consistent through multiple steps. 
 
-
-Note that the script deletes all empty folders in the working tree. It supresses the message `EDC5136I Directory not empty.` and handles that as a INFO message.
-
 #### Script output
 
 The section below contains the output that is produced by the `deleteWorkspace.sh` script.
@@ -1105,89 +1183,15 @@ The section below contains the output that is produced by the `deleteWorkspace.s
   <summary>Script Output</summary>
 
 ```
-deleteWorkspace.sh: [INFO] Delete Workspace script. Version=1.00
+deleteWorkspace.sh: [INFO] Delete Workspace script. Version=1.10
 deleteWorkspace.sh: [INFO] **************************************************************
-deleteWorkspace.sh: [INFO] ** Started - Delete Workspace on HOST/USER: z/OS ZT01 05.00 02 8561/BPXROOT    
-deleteWorkspace.sh: [INFO] **          Working Directory: /var/dbb/pipelineBackend/MortApp/main/build-1
-deleteWorkspace.sh: [INFO] **          Workspace        : MortApp/main/build-1
+deleteWorkspace.sh: [INFO] ** Started - Delete Workspace on HOST/USER: z/OS VS01 01.00 03 8562/BPXROOT    
+deleteWorkspace.sh: [INFO] **          Working Directory: /var/workspace/cics-banking-sample-application/build-187
+deleteWorkspace.sh: [INFO] **          Workspace        : /var/workspace/cics-banking-sample-application/build-187
 deleteWorkspace.sh: [INFO] **************************************************************
-deleteWorkspace.sh: [INFO] Deleting contents in /var/dbb/pipelineBackend/MortApp/main/build-1: 
-deleteWorkspace.sh: [INFO] rm -Rfv /var/dbb/pipelineBackend/MortApp/main/build-1/*
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/info/exclude
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/applypatch-msg.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/commit-msg.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/post-update.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/pre-applypatch.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/pre-commit.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/prepare-commit-msg.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/pre-push.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/pre-rebase.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/update.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/hooks/post-checkout.sample
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/description
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/refs/heads/main
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/refs/remotes/origin/HEAD
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/config
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/HEAD
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/objects/pack/pack-ab68cc529d7cc1609635c0d093249af2cca3a49d.pack
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/objects/pack/pack-ab68cc529d7cc1609635c0d093249af2cca3a49d.rev
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/objects/pack/pack-ab68cc529d7cc1609635c0d093249af2cca3a49d.idx
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/logs/refs/remotes/origin/HEAD
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/logs/refs/heads/main
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/logs/HEAD
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/index
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.git/packed-refs
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.gitattributes
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/.project
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/MultibranchPipeline
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/README.md
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/BMS.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/CRB.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/Cobol.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/LinkEdit.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/README.md
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/application.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/baselineReference.config
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/bind.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/application-conf/file.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/bms/epsmlis.bms
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/bms/epsmort.bms
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epscmort.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epscsmrd.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epscsmrt.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epsmlist.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epsmpmt.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/cobol/epsnbrvl.cbl
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epsmortf.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epsmtcom.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epsmtinp.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epsmtout.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epsnbrpm.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/copybook/epspdata.cpy
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/crb/cics-resourcesDef.yaml
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/link/epsmlist.lnk
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/logs/BuildReport.html
-/var/dbb/pipelineBackend/MortApp/main/build-1/MortgageApplication/properties/epsmlist.cbl.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/buildList.txt
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/deletedFilesList.txt
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/EPSNBRVL.cobol.log
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/EPSCMORT.cobol.log
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/BuildReport.json
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/BuildReport.html
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/tempPackageDir/DBEHM.MORTGAGE.MAIN.BLD.LOAD/EPSCMORT.CICSLOAD
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/tempPackageDir/DBEHM.MORTGAGE.MAIN.BLD.DBRM/EPSCMORT.DBRM
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/tempPackageDir/buildReportOrder.txt
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/tempPackageDir/BuildReport.json
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/tempPackageDir/packageBuildOutputs.properties
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs/package.tar
-/var/dbb/pipelineBackend/MortApp/main/build-1/logs.tar
-deleteWorkspace.sh: [INFO] Deleting empty directories in working tree.
-deleteWorkspace.sh: [INFO] rmdir -p /var/dbb/pipelineBackend/MortApp/main/build-1 2>&1
-deleteWorkspace.sh: [INFO] Deleting empty directories stopped at below directory because it is not empty.
-deleteWorkspace.sh: [INFO] rmdir: FSUM6404 directory "/var/dbb/pipelineBackend/MortApp/main": EDC5136I Directory not empty. 
-deleteWorkspace.sh: [INFO] Workspace directory successfully deleted.
+deleteWorkspace.sh: [INFO] Deleting working directory /var/workspace/cics-banking-sample-application/build-187: 
+deleteWorkspace.sh: [INFO] rm -PRf /var/workspace/cics-banking-sample-application/build-187
+deleteWorkspace.sh: [INFO] Workspace directory successfully deleted. rc=0
 ```  
 
 </details>
